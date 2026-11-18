@@ -1,0 +1,31 @@
+# 공식 kafka-ui 이미지의 api.jar 를 그대로 가져오고, 런타임(JRE)만 Corretto 로 교체한다.
+# 보안팀 권고(CVE-2026-114938): Corretto 25.0.5.1.2 이상.
+# 빌드: docker build --platform linux/amd64 -f Dockerfile.corretto -t <ecr>/kafbat/kafka-ui:v1.5.0-corretto25.0.5.1.2 .
+ARG UPSTREAM_TAG=v1.5.0
+
+FROM ghcr.io/kafbat/kafka-ui:${UPSTREAM_TAG} AS upstream
+
+# amazoncorretto:25.0.5-alpine (Corretto-25.0.5.1.2, 2026-11-17 확인)
+FROM amazoncorretto:25.0.5-alpine@sha256:1124f698f69d2185828dbd1a1ebeb9aee21884ac64bed7af3deeafd20b21a9dc
+
+RUN apk add --no-cache \
+    # snappy codec
+    gcompat \
+    # configuring timezones
+    tzdata
+RUN addgroup -S kafkaui && adduser -S kafkaui -G kafkaui
+
+# creating folder for dynamic config usage (certificates uploads, etc)
+RUN mkdir /etc/kafkaui/
+RUN chown kafkaui /etc/kafkaui
+
+USER kafkaui
+
+COPY --from=upstream /api.jar /api.jar
+
+ENV JAVA_OPTS=
+
+EXPOSE 8080
+
+# see JmxSslSocketFactory docs to understand why add-opens is needed
+CMD java --add-opens java.rmi/javax.rmi.ssl=ALL-UNNAMED  $JAVA_OPTS -jar api.jar
